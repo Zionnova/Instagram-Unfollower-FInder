@@ -1,0 +1,13 @@
+{
+  "name": "instagram-unfollower-finder",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Find the Instagram accounts you follow that don't follow you back, from your Instagram data export. Runs entirely in the browser.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

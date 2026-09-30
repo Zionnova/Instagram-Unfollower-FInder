@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- The page may load its own files and nothing else: it cannot send your data anywhere. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="Find the Instagram accounts you follow that don't follow you back, from your Instagram data export. Runs in your browser; nothing is uploaded.">
+<title>Unfollower Finder</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<main class="wrap">
+  <header class="masthead">
+    <h1>Unfollower Finder</h1>
+    <p class="lede">Find the Instagram accounts you follow that don't follow you back, using the data export Instagram gives you. Your files are read on this device and never uploaded.</p>
+  </header>
+
+  <section class="loader" id="loader" aria-label="Load your export">
+    <div class="drop" id="drop">
+      <p class="drop-title">Drop your Instagram export here</p>
+      <p class="drop-sub">The <code>.zip</code> file exactly as Instagram sent it. No need to unzip it.</p>
+      <div class="drop-actions">
+        <input class="vh" id="file-input" type="file" accept=".zip,.json,.html,application/zip" multiple>
+        <label class="btn btn-primary" for="file-input">Choose .zip file</label>
+        <input class="vh" id="folder-input" type="file" webkitdirectory multiple>
+        <label class="btn" for="folder-input">Choose unzipped folder</label>
+      </div>
+      <p class="status" id="status" role="status" aria-live="polite"></p>
+    </div>
+    <p class="aside">No export yet? <button type="button" class="link-btn" id="sample-btn">See an example with made-up accounts</button></p>
+  </section>
+
+  <details class="howto" id="howto" open>
+    <summary>How to get your export from Instagram</summary>
+    <ol>
+      <li>In the Instagram app, go to your profile, open the menu, then <b>Accounts Center</b> &rarr; <b>Your information and permissions</b> &rarr; <b>Export your information</b> (called <b>Download your information</b> in some versions).</li>
+      <li>Create an export for your Instagram account and choose <b>Export to device</b>.</li>
+      <li>Under <b>Customize information</b>, select only <b>Followers and following</b>.
+        <span class="why">Everything else just makes the file bigger and slower to arrive.</span></li>
+      <li>Set <b>Date range</b> to <b>All time</b>.
+        <span class="why">The range filters by when each follow started. With "Last year", anyone who followed you before then is missing and shows up here by mistake.</span></li>
+      <li>Set <b>Format</b> to <b>JSON</b>.
+        <span class="why">HTML works too, but JSON includes the date of each follow, so you can sort by it.</span></li>
+      <li>Start the export. Instagram emails you when it's ready, usually within minutes, sometimes a day. Download the .zip and drop it above.</li>
+    </ol>
+  </details>
+
+  <section class="results" id="results" aria-label="Results" hidden>
+    <p class="sample-banner" id="sample-banner" hidden>This is an example with made-up accounts, not your data. Profile links are turned off.</p>
+
+    <dl class="figures">
+      <div><dt>You follow</dt><dd id="n-following"></dd></div>
+      <div><dt>Follow you</dt><dd id="n-followers"></dd></div>
+      <div><dt>Mutual</dt><dd id="n-mutual"></dd></div>
+      <div class="key"><dt>Don't follow you back</dt><dd id="n-not-back"></dd></div>
+    </dl>
+    <p class="source-note" id="source-note"></p>
+
+    <div class="tabs">
+      <button type="button" class="tab" data-tab="notFollowingYouBack" aria-pressed="true">Don't follow you back<span class="count"></span></button>
+      <button type="button" class="tab" data-tab="youDontFollowBack" aria-pressed="false">You don't follow back<span class="count"></span></button>
+    </div>
+
+    <div class="controls">
+      <input type="search" id="search" placeholder="Search usernames" aria-label="Search usernames" autocomplete="off" spellcheck="false">
+      <select id="sort" aria-label="Sort order">
+        <option value="newest">Newest follow first</option>
+        <option value="oldest">Oldest follow first</option>
+        <option value="az">A to Z</option>
+      </select>
+    </div>
+
+    <p class="hint">Tap a name to open the profile on Instagram; ones you've opened turn grey. Hide accounts you don't care about, like celebrities, or ones that turn out to be deleted ("Sorry, this page isn't available"). This browser remembers what you hide.</p>
+
+    <ul class="list" id="list"></ul>
+    <p class="empty" id="empty" hidden></p>
+
+    <div class="list-foot">
+      <button type="button" class="link-btn" id="toggle-hidden" hidden></button>
+      <button type="button" class="btn" id="reset-btn">Load a different export</button>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <p>Not affiliated with Instagram or Meta. Free and open source under the MIT License.</p>
+  </footer>
+</main>
+<script src="assets/zip.js"></script>
+<script src="assets/parse.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
