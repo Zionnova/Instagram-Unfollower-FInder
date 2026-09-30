@@ -11,19 +11,21 @@
   }
 
   var ui = {
-    loader: $('loader'),
+    start: $('start'),
     drop: $('drop'),
     fileInput: $('file-input'),
     folderInput: $('folder-input'),
     status: $('status'),
     sampleBtn: $('sample-btn'),
-    howto: $('howto'),
+    howLink: $('how-link'),
+    themeBtn: $('theme-btn'),
     results: $('results'),
     sampleBanner: $('sample-banner'),
+    bigNumber: $('big-number'),
+    bigLabel: $('big-label'),
     nFollowing: $('n-following'),
     nFollowers: $('n-followers'),
     nMutual: $('n-mutual'),
-    nNotBack: $('n-not-back'),
     sourceNote: $('source-note'),
     tabs: Array.prototype.slice.call(document.querySelectorAll('.tab')),
     search: $('search'),
@@ -161,7 +163,6 @@
     ui.nFollowing.textContent = numberFormat.format(result.followingCount);
     ui.nFollowers.textContent = numberFormat.format(result.followersCount);
     ui.nMutual.textContent = numberFormat.format(result.mutualCount);
-    ui.nNotBack.textContent = numberFormat.format(result.notFollowingYouBack.length);
 
     var note = isSample
       ? 'Read from an example export.'
@@ -172,12 +173,15 @@
     ui.sourceNote.textContent = note;
 
     ui.sampleBanner.hidden = !isSample;
-    ui.loader.hidden = true;
-    ui.howto.hidden = true;
+    ui.start.hidden = true;
+    ui.howLink.hidden = true;
     ui.results.hidden = false;
-    ui.resetBtn.textContent = isSample ? 'Load your own export' : 'Load a different export';
+    ui.resetBtn.hidden = false;
+    ui.resetBtn.innerHTML = isSample
+      ? '<span class="label-long">Use your own file</span><span class="label-short">Your file</span>'
+      : '<span class="label-long">Open a different file</span><span class="label-short">New file</span>';
     render();
-    ui.results.scrollIntoView({ block: 'start' });
+    window.scrollTo(0, 0);
   }
 
   function listNames(names) {
@@ -256,7 +260,12 @@
       tab.querySelector('.count').textContent = numberFormat.format(remaining);
     });
     var all = state.result[state.tab];
-    var hiddenHere = all.length - all.filter(notHidden).length;
+    var left = all.filter(notHidden).length;
+    var hiddenHere = all.length - left;
+    ui.bigNumber.textContent = numberFormat.format(left);
+    ui.bigLabel.textContent = state.tab === 'notFollowingYouBack'
+      ? (left === 1 ? 'person you follow doesn’t follow you back' : 'people you follow don’t follow you back')
+      : (left === 1 ? 'person follows you that you don’t follow back' : 'people follow you that you don’t follow back');
     ui.toggleHidden.hidden = !hiddenHere && !state.showHidden;
     ui.toggleHidden.textContent = state.showHidden
       ? 'Leave out hidden accounts'
@@ -267,34 +276,65 @@
     var li = document.createElement('li');
     li.className = 'row' + (isHidden ? ' is-hidden' : '');
 
-    var handle;
-    if (state.sample) {
-      handle = document.createElement('span');
-    } else {
-      handle = document.createElement('a');
-      handle.href = 'https://www.instagram.com/' + acc.username + '/';
-      handle.target = '_blank';
-      handle.rel = 'noopener noreferrer';
-    }
-    handle.className = 'handle';
-    handle.textContent = '@' + acc.username;
-    li.appendChild(handle);
+    var avatar = document.createElement('span');
+    avatar.className = 'avatar';
+    avatar.setAttribute('aria-hidden', 'true');
+    avatar.setAttribute('data-tint', String(tintFor(acc.username)));
+    avatar.textContent = (acc.username.replace(/[^a-z0-9]/g, '').charAt(0) || '@').toUpperCase();
+    li.appendChild(avatar);
 
+    var who = document.createElement('div');
+    who.className = 'who';
+    var url = 'https://www.instagram.com/' + acc.username + '/';
+    var handle = document.createElement(state.sample ? 'span' : 'a');
+    handle.className = 'handle';
+    handle.textContent = acc.username;
+    if (!state.sample) setLink(handle, url);
+    who.appendChild(handle);
     if (acc.timestamp != null) {
-      var meta = document.createElement('span');
-      meta.className = 'meta';
-      meta.textContent = 'since ' + dateFormat.format(new Date(acc.timestamp * 1000));
-      li.appendChild(meta);
+      var since = document.createElement('span');
+      since.className = 'since';
+      var date = dateFormat.format(new Date(acc.timestamp * 1000));
+      since.textContent = state.tab === 'notFollowingYouBack' ? 'You followed them ' + date : 'Followed you ' + date;
+      who.appendChild(since);
+    }
+    li.appendChild(who);
+
+    if (!state.sample) {
+      var view = document.createElement('a');
+      view.className = 'view-btn';
+      setLink(view, url);
+      view.textContent = 'View profile';
+      view.setAttribute('aria-label', 'View @' + acc.username + ' on Instagram');
+      view.insertAdjacentHTML('beforeend', '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7"/><path d="M8 7h9v9"/></svg>');
+      li.appendChild(view);
     }
 
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'hide-btn';
     btn.setAttribute('data-username', acc.username);
-    btn.textContent = isHidden ? 'Unhide' : 'Hide';
-    btn.setAttribute('aria-label', (isHidden ? 'Unhide @' : 'Hide @') + acc.username);
+    setHideLabel(btn, acc.username, isHidden);
     li.appendChild(btn);
     return li;
+  }
+
+  function setLink(a, url) {
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+  }
+
+  function setHideLabel(btn, username, isHidden) {
+    btn.textContent = isHidden ? 'Undo' : 'Hide';
+    btn.setAttribute('aria-label', (isHidden ? 'Unhide @' : 'Hide @') + username);
+  }
+
+  // A stable colour per username, so avatars don't reshuffle between renders.
+  function tintFor(username) {
+    var h = 0;
+    for (var i = 0; i < username.length; i++) h = (h * 31 + username.charCodeAt(i)) >>> 0;
+    return (h % 6) + 1;
   }
 
   // Hiding marks the row in place (so a mis-tap is easy to undo) and
@@ -308,20 +348,20 @@
     saveHidden();
 
     btn.closest('.row').classList.toggle('is-hidden', nowHidden);
-    btn.textContent = nowHidden ? 'Unhide' : 'Hide';
-    btn.setAttribute('aria-label', (nowHidden ? 'Unhide @' : 'Hide @') + username);
+    setHideLabel(btn, username, nowHidden);
     updateCounts();
   }
 
   function reset() {
     state.result = null;
     ui.results.hidden = true;
-    ui.loader.hidden = false;
-    ui.howto.hidden = false;
+    ui.resetBtn.hidden = true;
+    ui.start.hidden = false;
+    ui.howLink.hidden = false;
     ui.fileInput.value = '';
     ui.folderInput.value = '';
     setStatus('');
-    ui.drop.scrollIntoView({ block: 'center' });
+    window.scrollTo(0, 0);
   }
 
   // ---------- example data ----------
@@ -410,4 +450,35 @@
     if (btn) toggleHiddenRow(btn);
   });
   ui.resetBtn.addEventListener('click', reset);
+
+  // ---------- light / dark ----------
+
+  var THEME_KEY = 'unfollower-finder.theme';
+  var darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+  function isDark() {
+    var set = document.documentElement.getAttribute('data-theme');
+    return set ? set === 'dark' : darkQuery.matches;
+  }
+
+  function labelThemeButton() {
+    ui.themeBtn.setAttribute('aria-label', isDark() ? 'Switch to light mode' : 'Switch to dark mode');
+  }
+
+  ui.themeBtn.addEventListener('click', function () {
+    var next = isDark() ? 'light' : 'dark';
+    // Choosing what the system already uses means "follow the system" again.
+    var systemTheme = darkQuery.matches ? 'dark' : 'light';
+    if (next === systemTheme) document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', next);
+    try {
+      if (next === systemTheme) localStorage.removeItem(THEME_KEY);
+      else localStorage.setItem(THEME_KEY, next);
+    } catch (e) {
+      /* storage unavailable: the choice lasts until the page is closed */
+    }
+    labelThemeButton();
+  });
+  if (darkQuery.addEventListener) darkQuery.addEventListener('change', labelThemeButton);
+  labelThemeButton();
 })();

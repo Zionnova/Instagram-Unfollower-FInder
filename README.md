@@ -6,7 +6,12 @@ profile.
 
 It's one static web page. Your export is read by your browser and never leaves
 your device: there is no server, no login, no tracking, and the page's Content
-Security Policy blocks it from making network requests at all.
+Security Policy blocks it from making network requests at all. Even the fonts
+are bundled in the repo rather than loaded from Google, so opening the page
+contacts nobody.
+
+It follows your system's light or dark setting, and the button in the top
+corner switches between them.
 
 ## Using it
 
@@ -109,6 +114,8 @@ No dependencies and no build step. The code is plain browser JavaScript:
 ```
 index.html          page markup
 assets/style.css    styles (light and dark)
+assets/theme.js     applies a saved light/dark choice before the page paints
+assets/fonts/       Bricolage Grotesque and Instrument Sans (SIL Open Font License)
 assets/zip.js       ZIP reader (stored, deflate, ZIP64)
 assets/parse.js     export parsing and the comparison
 assets/app.js       page behaviour
@@ -124,4 +131,5 @@ npm test
 
 ## License
 
-[MIT](LICENSE). Not affiliated with Instagram or Meta.
+Code: [MIT](LICENSE). Fonts: [SIL Open Font License 1.1](assets/fonts/), see
+the `OFL-*.txt` files next to them. Not affiliated with Instagram or Meta.
