@@ -152,4 +152,43 @@ function followingHtml(usernames) {
     `<a href="https://help.instagram.com/">Help</a><div class="_a706" role="main">${rows}</div></body></html>`;
 }
 
-module.exports = { makeZip, followersJson, followingJsonOld, followingJsonNew, followersHtml, followingHtml };
+// 2026 layout: every field is a {label, value} pair, and the labels are
+// translated into the account's language.
+function labelValuesJson(entries, labels = { url: 'URL', name: 'Name', username: 'Username' }, { wrap } = {}) {
+  const records = entries.map(([u, ts, displayName]) => ({
+    timestamp: ts,
+    media: [],
+    label_values: [
+      { label: labels.url, value: '' },
+      { label: labels.name, value: displayName ?? `${u.charAt(0).toUpperCase()}${u.slice(1)} Person` },
+      { label: labels.username, value: u }
+    ],
+    fbid: '17800000000000001'
+  }));
+  return JSON.stringify(wrap ? { [wrap]: records } : records);
+}
+
+// HTML version of the label layout: one table per record, date after it.
+function labelTableHtml(entries, labels = { name: 'Name', username: 'Username' }) {
+  const rows = entries
+    .map(
+      ([u, date]) =>
+        `<div class="pam _3-95 _2ph- _a6-g uiBoxWhite noborder"><div class="_3-95 _a6-p"><div class="pam _3-95 _2ph- _a6-g uiBoxWhite noborder">` +
+        `<div class="_a6-p"><table style="table-layout: fixed;"><tr><td class="_a6_q">${labels.name}</td><td class="_2piu _a6_r">Some Name</td></tr>` +
+        `<tr><td class="_a6_q">${labels.username}</td><td class="_2piu _a6_r">${u}</td></tr></table></div></div></div>` +
+        `<div class="_3-94 _a6-o">${date}</div></div>`
+    )
+    .join('');
+  return `<html><body><main class="_a706" role="main">${rows}</main></body></html>`;
+}
+
+module.exports = {
+  makeZip,
+  followersJson,
+  followingJsonOld,
+  followingJsonNew,
+  followersHtml,
+  followingHtml,
+  labelValuesJson,
+  labelTableHtml
+};

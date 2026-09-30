@@ -30,20 +30,40 @@
     return Number(view.getBigUint64(offset, true));
   }
 
+  var DAMAGED = 'This .zip file is incomplete or damaged. If the download was interrupted, download the export again.';
+
   // Returns [{ name, method, flags, compressedSize, size, offset }].
   async function listEntries(blob) {
+    try {
+      return await readDirectory(blob);
+    } catch (err) {
+      // A cut-off download usually fails as an out-of-range read; say what it means.
+      if (err instanceof RangeError) throw new Error(DAMAGED);
+      throw err;
+    }
+  }
+
+  async function readDirectory(blob) {
     // The end-of-central-directory record is 22 bytes plus a comment of up to 64 KiB.
     var tailLength = Math.min(blob.size, 22 + 0xffff);
     var tailStart = blob.size - tailLength;
     var tail = await readView(blob, tailStart, tailLength);
+    // Scan backwards; prefer a record whose comment length reaches exactly to
+    // the end of the file, so a signature inside the comment can't fool us.
     var eocd = -1;
     for (var i = tail.byteLength - 22; i >= 0; i--) {
-      if (tail.getUint32(i, true) === SIG_EOCD) {
+      if (tail.getUint32(i, true) !== SIG_EOCD) continue;
+      if (eocd < 0) eocd = i;
+      if (i + 22 + tail.getUint16(i + 20, true) === tail.byteLength) {
         eocd = i;
         break;
       }
     }
-    if (eocd < 0) throw new Error('This file is not a ZIP archive, or it is damaged.');
+    if (eocd < 0) {
+      var head = blob.size >= 4 ? await readView(blob, 0, 4) : null;
+      if (head && head.getUint32(0, true) === SIG_LOCAL) throw new Error(DAMAGED);
+      throw new Error('This file isn’t a .zip archive. Choose the .zip file Instagram sent you.');
+    }
 
     var count = tail.getUint16(eocd + 10, true);
     var dirSize = tail.getUint32(eocd + 12, true);
@@ -63,6 +83,7 @@
       dirOffset = u64(z64, 48);
     }
 
+    if (dirOffset + dirSize > blob.size) throw new Error(DAMAGED);
     var dir = await readView(blob, dirOffset, dirSize);
     var entries = [];
     var p = 0;
@@ -110,22 +131,31 @@
 
   async function readText(blob, entry) {
     if (entry.flags & 1) throw new Error(entry.name + ' is encrypted.');
+    if (entry.offset + 30 > blob.size) throw new Error(DAMAGED);
     var local = await readView(blob, entry.offset, 30);
-    if (local.getUint32(0, true) !== SIG_LOCAL) {
-      throw new Error('This ZIP archive is damaged (bad entry header for ' + entry.name + ').');
-    }
+    if (local.getUint32(0, true) !== SIG_LOCAL) throw new Error(DAMAGED);
     var start = entry.offset + 30 + local.getUint16(26, true) + local.getUint16(28, true);
+    if (start + entry.compressedSize > blob.size) throw new Error(DAMAGED);
     var data = blob.slice(start, start + entry.compressedSize);
 
-    if (entry.method === 0) return utf8.decode(await data.arrayBuffer());
-    if (entry.method !== 8) {
-      throw new Error(entry.name + ' uses an unsupported compression method (' + entry.method + ').');
+    var bytes;
+    if (entry.method === 0) {
+      bytes = await data.arrayBuffer();
+    } else if (entry.method === 8) {
+      if (typeof DecompressionStream === 'undefined') {
+        throw new Error('This browser can’t unzip files. Update it, or unzip the export yourself and choose the folder.');
+      }
+      try {
+        bytes = await new Response(data.stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
+      } catch (err) {
+        throw new Error(DAMAGED);
+      }
+    } else {
+      throw new Error(entry.name + ' uses a compression method this page can’t read (' + entry.method + '). Unzip the export yourself and choose the folder.');
     }
-    if (typeof DecompressionStream === 'undefined') {
-      throw new Error('This browser cannot unzip files. Update it, or unzip the export yourself and choose the extracted folder.');
-    }
-    var stream = data.stream().pipeThrough(new DecompressionStream('deflate-raw'));
-    return new Response(stream).text();
+    // A damaged entry can inflate to the wrong length without an error.
+    if (bytes.byteLength !== entry.size) throw new Error(DAMAGED);
+    return utf8.decode(bytes);
   }
 
   return { listEntries: listEntries, readText: readText };

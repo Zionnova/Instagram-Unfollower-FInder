@@ -45,5 +45,29 @@ test('end to end: zip in, list of non-followers out', async () => {
 });
 
 test('rejects files that are not ZIP archives', async () => {
-  await assert.rejects(IgZip.listEntries(new Blob(['just some text'])), /not a ZIP archive/);
+  await assert.rejects(IgZip.listEntries(new Blob(['just some text'])), /isn’t a \.zip archive/);
+});
+
+test('a download cut off partway says so', async () => {
+  const zip = h.makeZip(files);
+  await assert.rejects(IgZip.listEntries(new Blob([zip.subarray(0, Math.floor(zip.length / 2))])), /incomplete or damaged/);
+});
+
+test('a damaged entry is caught instead of read as garbage', async () => {
+  const zip = Buffer.from(h.makeZip(files));
+  const blob = new Blob([zip]);
+  const entries = await IgZip.listEntries(blob);
+  const big = entries.find((e) => e.name.endsWith('big.txt'));
+  // Flip bytes in the middle of the compressed data.
+  const damaged = Buffer.from(zip);
+  const mid = big.offset + 30 + Buffer.byteLength(big.name) + Math.floor(big.compressedSize / 2);
+  for (let i = 0; i < 16; i++) damaged[mid + i] ^= 0xff;
+  await assert.rejects(IgZip.readText(new Blob([damaged]), big), /incomplete or damaged/);
+});
+
+test('a signature-like sequence inside the archive comment does not confuse the reader', async () => {
+  const fake = Buffer.alloc(22);
+  fake.writeUInt32LE(0x06054b50, 0);
+  fake.writeUInt16LE(7, 10);
+  assert.deepEqual(await readAll(h.makeZip(files, { comment: 'x' + fake.toString('latin1') + 'y' })), files);
 });

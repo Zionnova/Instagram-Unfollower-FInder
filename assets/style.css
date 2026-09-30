@@ -51,6 +51,9 @@
   --visited: #8a8f86;
   --error: #a23a2e;
   --error-soft: #f8e5e1;
+  --warn-fg: #6b4300;
+  --warn-bg: #fdf1d8;
+  --warn-line: #e9c46a;
   --shadow: 0 1px 0 #e2e4de, 0 12px 32px -18px rgba(27, 29, 26, 0.25);
   --avatar-fg: #2a2d28;
   --tint-1: #f1dccb;
@@ -83,6 +86,9 @@
     --visited: #7d8379;
     --error: #f08b7d;
     --error-soft: #3a1e1a;
+    --warn-fg: #f3d08a;
+    --warn-bg: #33280f;
+    --warn-line: #7a5c1c;
     --shadow: 0 1px 0 #262a26, 0 16px 36px -20px rgba(0, 0, 0, 0.7);
     --avatar-fg: #eceee8;
     --tint-1: #4b3a2d;
@@ -112,6 +118,9 @@
   --visited: #7d8379;
   --error: #f08b7d;
   --error-soft: #3a1e1a;
+  --warn-fg: #f3d08a;
+  --warn-bg: #33280f;
+  --warn-line: #7a5c1c;
   --shadow: 0 1px 0 #262a26, 0 16px 36px -20px rgba(0, 0, 0, 0.7);
   --avatar-fg: #eceee8;
   --tint-1: #4b3a2d;
@@ -561,9 +570,6 @@ a:hover {
   flex-grow: 1;
   display: grid;
   grid-template-columns: 340px minmax(0, 1fr);
-  grid-template-areas:
-    "banner banner"
-    "summary listing";
   column-gap: 64px;
   row-gap: 24px;
   align-items: start;
@@ -571,8 +577,53 @@ a:hover {
   padding-block: 24px 56px;
 }
 
+.results-top {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.notices {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.notices:empty {
+  display: none;
+}
+
+.notice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  font-size: 15px;
+  max-width: 60em;
+}
+
+.notice-title {
+  font-weight: 600;
+}
+
+.notice-warn {
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+  border: 1px solid var(--warn-line);
+}
+
+.notice-warn a {
+  color: inherit;
+}
+
+.notice-info {
+  background: var(--sunken);
+  color: var(--fg);
+}
+
 .sample-banner {
-  grid-area: banner;
   padding: 12px 16px;
   border-radius: 12px;
   background: var(--accent-soft);
@@ -581,7 +632,6 @@ a:hover {
 }
 
 .summary {
-  grid-area: summary;
   display: flex;
   flex-direction: column;
   gap: 28px;
@@ -644,7 +694,6 @@ a:hover {
 }
 
 .listing {
-  grid-area: listing;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -886,6 +935,68 @@ a.handle:visited {
   max-width: 44em;
 }
 
+.files-read,
+.requested {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.files-read summary,
+.requested summary {
+  cursor: pointer;
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.requested {
+  padding: 14px 18px;
+  background: var(--surface);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+
+.requested[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.requested p {
+  max-width: 44em;
+}
+
+.file-list,
+.mini-list {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.file-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.file-path {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.file-count {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.mini-list {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+
 .footer {
   display: flex;
   flex-wrap: wrap;
@@ -906,10 +1017,7 @@ a.handle:visited {
 
   .results {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "banner"
-      "summary"
-      "listing";
+    row-gap: 20px;
   }
 
   .summary {

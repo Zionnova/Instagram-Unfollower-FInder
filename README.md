@@ -21,8 +21,9 @@ corner switches between them.
    information*) → create an export for your Instagram account →
    **Export to device**. Then:
    - **Customize information:** select only **Followers and following**.
-   - **Date range:** **All time**. See [why](#why-all-time-matters).
-   - **Format:** **JSON**. HTML also works, but has no follow dates.
+   - **Date range:** **All time**. It isn't the default, and it matters more
+     than anything else here. See [why](#why-all-time-matters).
+   - **Format:** **JSON**. HTML also works.
 
    Instagram emails you when the file is ready.
 2. **Open the page** and drop in the `.zip` exactly as downloaded. No need to
@@ -35,7 +36,8 @@ corner switches between them.
    that browser.
 
 A second tab shows the opposite: people who follow you that you don't follow
-back.
+back. Private accounts you've asked to follow that haven't accepted are listed
+separately, because you don't actually follow them yet.
 
 ### Running the page
 
@@ -47,44 +49,88 @@ back.
 
 ## How it works
 
-The export contains two relevant files, found anywhere in the zip by name:
+The export holds the lists in `connections/followers_and_following/`:
 
 | File | Meaning |
 | --- | --- |
 | `followers_1.json` (`_2`, `_3`… on big accounts) | Accounts that follow you |
 | `following.json` | Accounts you follow |
+| `pending_follow_requests.json` | Private accounts you've asked to follow that haven't accepted |
 
-The result is `following − followers`, compared by lowercase username.
+The result is `following − followers − pending requests`, compared by
+lowercase username.
 
-Instagram has changed the file layout over time, and the parser handles each
-version it knows about:
+### Instagram keeps changing the format
 
-- **2022–2024 JSON:** the username is in `string_list_data[0].value`.
-- **Late-2024 JSON (`following.json`):** `value` was removed. The username is
-  in `title` and the link is `instagram.com/_u/<username>`. Tools that only
-  read `value` got empty results after this change.
-- **HTML export:** usernames are taken from the profile links.
+Instagram changes this export often, sometimes one file at a time, so a single
+export can mix formats. The parser reads every layout seen in real exports:
 
-Entries where no valid username can be found are skipped and counted, and the
-page tells you how many there were.
+| Layout | What a record looks like |
+| --- | --- |
+| JSON, 2022 on | `{"title": "", "string_list_data": [{"href", "value": <username>, "timestamp"}]}` |
+| JSON, late 2024 on (`following.json`) | `{"title": <username>, "string_list_data": [{"href", "timestamp"}]}` |
+| JSON, 2026 on | `{"timestamp", "label_values": [{"label": "Username", "value": <username>}, …]}` |
+| HTML | one profile link per record, with the date in the next line |
+| HTML, 2026 on | a small table of label/value rows per record |
+
+The 2026 layouts write every field as a label and a value, and **the labels
+are translated** into the account's language ("Username", "Nombre de usuario",
+…), sometimes garbled by a double encoding. So the parser doesn't look for the
+word "Username". It works out which label holds usernames from how the values
+look across the whole export: usernames are always lowercase letters, digits,
+dots and underscores, and display names rarely are. If no label is a clear
+winner, it stops with an error instead of guessing.
+
+A list can also be a bare array, wrapped in `{"relationships_...": [...]}`, or a
+single record with no array around it.
+
+### When something can't be read, it says so
+
+The worst thing a tool like this can do is read nothing from your followers
+file and then tell you nobody follows you back. That's what the first version
+of this page did when it met the 2026 layout. Now:
+
+- If the followers or following list has entries but **none** can be read, you
+  get an error that says so, not a result.
+- If **some** entries can't be read, the results come with a warning and the
+  count.
+- If the followers list comes out **empty**, you get a warning to check it
+  against your profile.
+- If an export holds **two copies** of a list (both of Instagram's folder
+  layouts, or two exports chosen together), only the newest copy is read.
+  Mixing copies from different days would count people who have since
+  unfollowed.
+- **Files read** under the counts shows exactly which files were used and how
+  many entries each gave.
 
 The zip is read without loading the whole file into memory. Only the directory
-and the two or three small files needed are read, so a multi-gigabyte export
-that includes photos is fine. Decompression uses the browser's built-in
-`DecompressionStream`, which needs Chrome/Edge 103+, Firefox 113+ or
-Safari 16.4+. On older browsers, unzip the export and choose the folder.
+and the few small files needed are read, so a multi-gigabyte export that
+includes photos is fine. Each file's unzipped size is checked, so a download
+that was cut off or damaged gives an error instead of a wrong answer.
+Decompression uses the browser's built-in `DecompressionStream`, which needs
+Chrome/Edge 103+, Firefox 113+ or Safari 16.4+. On older browsers, unzip the
+export and choose the folder.
 
 ### Why "All time" matters
 
 The export isn't a history of every follow. `followers_1.json` and
 `following.json` are snapshots of who follows whom **on the day you requested
 the export**. If you unfollowed someone or they unfollowed you, they're not in
-the file. That's why results are always "current".
+the file.
 
-The date range doesn't change that. It filters by **when each follow
-started**. With "Last year", a friend who followed you three years ago is left
-out of `followers_1.json`. If you followed them back recently, they'd wrongly
-show up as not following you. "All time" gives the complete current lists.
+The date range filters **`followers_1.json` by when each person followed you,
+but leaves `following.json` whole**. With anything shorter than "All time",
+everyone who followed you before the cut-off is missing, and every one of them
+shows up as "not following you back". The file looks perfectly normal, so
+nothing in it tells you. [safe-unfollow](https://github.com/ignromanov/safe-unfollow)
+measured this on one account's exports two days apart: followers dropped from
+364 to 118, and 199 of 298 mutual follows were wrongly reported.
+
+The page watches for this. If your followers only go back to, say, last year
+while the accounts you follow go back years, it shows a warning. The quickest
+check is yours to make, though: compare the "Follow you" number with the
+follower count on your profile. If your profile shows a lot more, request the
+export again with **All time**.
 
 ### Deleted and deactivated accounts
 
@@ -102,10 +148,24 @@ do it.
 ## Limitations
 
 - Results are as of the export date. Request a new export to refresh them.
-- The HTML format has no follow dates, so only A-to-Z sorting is available.
 - If Instagram changes the export format again, the parser may need updating.
-  Open an issue with a sample entry (with the username changed) from the new
-  file.
+  The page will tell you when it can't read a file. Open an issue with one
+  entry from that file (change the username) and it can be fixed.
+
+## Troubleshooting
+
+**Almost everyone shows up as not following me back.** Compare "Follow you"
+with the follower count on your profile. If the page's number is much lower,
+the export's date range wasn't "All time": request a new export with All time.
+If the page says it couldn't read your followers, that's a format change; please
+open an issue.
+
+**"Your followers list isn't in what you chose".** The export has to include
+"Followers and following". Instagram sometimes splits a big export into several
+.zip files; choose all of them at once.
+
+**"This .zip file is incomplete or damaged".** The download was cut off.
+Download it again from the email link.
 
 ## Development
 
@@ -128,6 +188,14 @@ Node 22 or newer:
 ```sh
 npm test
 ```
+
+## Credits
+
+The details of Instagram's recent format changes, including the translated
+labels, the date-range cut and the duplicate folder layouts, come from the
+research in [safe-unfollow](https://github.com/ignromanov/safe-unfollow) and
+[InstagramUnfollowers](https://github.com/EdvinCodes/InstagramUnfollowers), both
+open source. No code was copied from either.
 
 ## License
 

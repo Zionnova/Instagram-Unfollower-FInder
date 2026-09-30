@@ -3,7 +3,9 @@
   'use strict';
 
   var HIDDEN_KEY = 'unfollower-finder.hidden.v1';
+  var ISSUES_URL = 'https://github.com/Zionnova/Instagram-Unfollower-FInder/issues';
   var dateFormat = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  var monthFormat = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'long' });
   var numberFormat = new Intl.NumberFormat();
 
   function $(id) {
@@ -20,7 +22,13 @@
     howLink: $('how-link'),
     themeBtn: $('theme-btn'),
     results: $('results'),
+    resultsTop: $('results-top'),
+    notices: $('notices'),
     sampleBanner: $('sample-banner'),
+    fileList: $('file-list'),
+    requested: $('requested'),
+    requestedSummary: $('requested-summary'),
+    requestedList: $('requested-list'),
     bigNumber: $('big-number'),
     bigLabel: $('big-label'),
     nFollowing: $('n-following'),
@@ -70,9 +78,19 @@
     }
   }
 
-  function setStatus(message, isError) {
+  // withReportLink: add a link to GitHub issues after the message.
+  function setStatus(message, isError, withReportLink) {
     ui.status.textContent = message || '';
     ui.status.classList.toggle('is-error', !!isError);
+    if (withReportLink) {
+      var link = document.createElement('a');
+      link.href = ISSUES_URL;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = 'Report it on GitHub';
+      ui.status.appendChild(document.createTextNode(' '));
+      ui.status.appendChild(link);
+    }
   }
 
   // ---------- reading files ----------
@@ -105,16 +123,20 @@
       var files = await readInputs(inputs);
       if (!files.length) {
         throw new Error(
-          'No follower or following lists were found in what you chose. The export needs to include "Followers and following". ' +
+          'No follower or following lists were found in what you chose. The export needs to include “Followers and following”. ' +
           'If Instagram split your download into several .zip files, choose all of them at once.'
         );
       }
       showResult(IgParse.analyze(files), false);
       setStatus('');
     } catch (err) {
-      setStatus(err.message, true);
+      var formatProblem = /^(unknown-format|unreadable-)/.test(err.code || '');
+      setStatus(err.message, true, formatProblem);
     } finally {
       ui.drop.removeAttribute('aria-busy');
+      // Otherwise choosing the same file again (say, after an error) does nothing.
+      ui.fileInput.value = '';
+      ui.folderInput.value = '';
     }
   }
 
@@ -164,15 +186,17 @@
     ui.nFollowers.textContent = numberFormat.format(result.followersCount);
     ui.nMutual.textContent = numberFormat.format(result.mutualCount);
 
-    var note = isSample
-      ? 'Read from an example export.'
-      : 'Read from ' + listNames(result.filesRead) + '. This is how things stood when you requested the export.';
-    if (result.skippedEntries) {
-      note += ' ' + result.skippedEntries + ' ' + (result.skippedEntries === 1 ? 'entry had' : 'entries had') + ' no readable username and ' + (result.skippedEntries === 1 ? 'was' : 'were') + ' left out.';
-    }
-    ui.sourceNote.textContent = note;
+    ui.sourceNote.textContent = isSample
+      ? 'From an example export.'
+      : 'This is how things stood when you requested the export. Your profile should show about ' +
+        numberFormat.format(result.followersCount) + ' followers; if it shows a lot more, the export is missing some.';
+
+    renderFileList(result.files);
+    renderNotices(result);
+    renderRequested(result.requested);
 
     ui.sampleBanner.hidden = !isSample;
+    ui.resultsTop.hidden = !isSample && !result.warnings.length;
     ui.start.hidden = true;
     ui.howLink.hidden = true;
     ui.results.hidden = false;
@@ -184,10 +208,118 @@
     window.scrollTo(0, 0);
   }
 
-  function listNames(names) {
-    var unique = Array.from(new Set(names));
-    if (unique.length <= 1) return unique.join('');
-    return unique.slice(0, -1).join(', ') + ' and ' + unique[unique.length - 1];
+  function renderFileList(files) {
+    var fragment = document.createDocumentFragment();
+    files.forEach(function (f) {
+      var li = document.createElement('li');
+      var path = document.createElement('span');
+      path.className = 'file-path';
+      path.textContent = f.path;
+      var count = document.createElement('span');
+      count.className = 'file-count';
+      count.textContent = f.read === f.records
+        ? numberFormat.format(f.read) + ' read'
+        : numberFormat.format(f.read) + ' of ' + numberFormat.format(f.records) + ' read';
+      li.appendChild(path);
+      li.appendChild(count);
+      fragment.appendChild(li);
+    });
+    ui.fileList.replaceChildren(fragment);
+  }
+
+  var LIST_NAMES = { followers: 'followers list', following: 'list of accounts you follow' };
+
+  function noticeFor(w, result) {
+    switch (w.code) {
+      case 'followers-cut':
+        return {
+          level: 'warn',
+          title: 'Your export is probably missing older followers',
+          text: 'The accounts you follow go back to ' + monthFormat.format(new Date(w.followingSince * 1000)) +
+            ', but your followers only go back to ' + monthFormat.format(new Date(w.followersSince * 1000)) +
+            '. Instagram does this when the export’s date range isn’t “All time”: older followers are left out of the file, so many people below probably do follow you. ' +
+            'Check the follower count on your profile. If it’s well above ' + numberFormat.format(result.followersCount) +
+            ', request a new export with Date range set to All time.'
+        };
+      case 'partly-unreadable':
+        return {
+          level: 'warn',
+          title: 'Some entries couldn’t be read',
+          text: numberFormat.format(w.unreadable) + ' of ' + numberFormat.format(w.records) + ' entries in your ' + LIST_NAMES[w.list] +
+            ' couldn’t be read, so the results below may be off. Instagram may have changed its export format.',
+          report: true
+        };
+      case 'duplicate-copies':
+        return {
+          level: 'info',
+          title: 'Two different copies of ' + w.file,
+          text: 'What you chose holds more than one version of this file, probably from exports made on different days. Only the newest was used: ' + w.used + '.'
+        };
+      case 'no-followers':
+        return {
+          level: 'warn',
+          title: 'Your followers list came out empty',
+          text: 'If your profile shows followers, this file couldn’t be read properly and everyone below is listed by mistake.',
+          report: true
+        };
+      case 'requests-unreadable':
+        return {
+          level: 'info',
+          title: 'Pending follow requests couldn’t be read',
+          text: 'Private accounts you’ve asked to follow that haven’t accepted yet may show up in the list below.'
+        };
+      default:
+        return null;
+    }
+  }
+
+  function renderNotices(result) {
+    var fragment = document.createDocumentFragment();
+    result.warnings.forEach(function (w) {
+      var n = noticeFor(w, result);
+      if (!n) return;
+      var box = document.createElement('div');
+      box.className = 'notice notice-' + n.level;
+      box.setAttribute('role', n.level === 'warn' ? 'alert' : 'status');
+      var title = document.createElement('p');
+      title.className = 'notice-title';
+      title.textContent = n.title;
+      var text = document.createElement('p');
+      text.textContent = n.text;
+      if (n.report) {
+        var link = document.createElement('a');
+        link.href = ISSUES_URL;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = 'Report it on GitHub';
+        text.appendChild(document.createTextNode(' '));
+        text.appendChild(link);
+      }
+      box.appendChild(title);
+      box.appendChild(text);
+      fragment.appendChild(box);
+    });
+    ui.notices.replaceChildren(fragment);
+  }
+
+  function renderRequested(requested) {
+    ui.requested.hidden = !requested.length;
+    ui.requested.open = false;
+    if (!requested.length) return;
+    ui.requestedSummary.textContent = requested.length === 1
+      ? '1 private account hasn’t accepted your follow request'
+      : numberFormat.format(requested.length) + ' private accounts haven’t accepted your follow request';
+    var fragment = document.createDocumentFragment();
+    requested.forEach(function (acc) {
+      var li = document.createElement('li');
+      var handle = document.createElement(state.sample ? 'span' : 'a');
+      handle.className = 'handle';
+      handle.textContent = acc.username;
+      if (!state.sample) setLink(handle, 'https://www.instagram.com/' + acc.username + '/');
+      li.appendChild(handle);
+      fragment.appendChild(li);
+    });
+    ui.requestedList.replaceChildren(fragment);
   }
 
   function hasDates(items) {
@@ -374,6 +506,7 @@
     var theyDont = ['bigcity.foodguide', 'daily.astro.facts', 'old_classmate_07', 'vintage.lens.shop',
       'running_club_west', 'nora.travels', 'design.inspo.daily', 'leo_climbs', 'band_you_saw_once'];
     var youDont = ['giveaway.bot.2931', 'cousin_pablo', 'neighbor.jess', 'promo_deals_now'];
+    var pending = ['a.private.sketchbook'];
 
     var now = Math.floor(Date.now() / 1000);
     function daysAgo(n) { return now - n * 86400; }
@@ -385,15 +518,24 @@
         string_list_data: [{ href: 'https://www.instagram.com/' + u, value: u, timestamp: daysAgo(9 + i * 41) }]
       };
     });
-    var following = mutual.concat(theyDont).map(function (u, i) {
+    var following = mutual.concat(theyDont, pending).map(function (u, i) {
       return {
         title: u,
         string_list_data: [{ href: 'https://www.instagram.com/_u/' + u, timestamp: daysAgo(4 + ((i * 53) % 900)) }]
       };
     });
+    // Newer exports write some files as translated label/value pairs.
+    var requests = pending.map(function (u) {
+      return {
+        timestamp: daysAgo(3),
+        media: [],
+        label_values: [{ label: 'Name', value: 'Sketchbook' }, { label: 'Username', value: u }]
+      };
+    });
     return [
       { path: 'connections/followers_and_following/followers_1.json', text: JSON.stringify(followers) },
-      { path: 'connections/followers_and_following/following.json', text: JSON.stringify({ relationships_following: following }) }
+      { path: 'connections/followers_and_following/following.json', text: JSON.stringify({ relationships_following: following }) },
+      { path: 'connections/followers_and_following/pending_follow_requests.json', text: JSON.stringify({ relationships_follow_requests_sent: requests }) }
     ];
   }
 
